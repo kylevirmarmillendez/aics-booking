@@ -1,36 +1,32 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DSWD AICS Appointment Booking
 
-## Getting Started
+Standalone Next.js app for the public DSWD Assistance to Individuals in Crisis Situations appointment booking flow.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Select a DSWD office and review capacity information.
+- Four-language data privacy notice (English, Filipino, Bisaya, Ilonggo), with acknowledgment required before continuing.
+- Choose an assistance type and a date/time based on live booking rules, holidays, and office availability.
+- Review assistance-type requirements, enter applicant details, and optionally scan supported National ID QR codes to prefill the name.
+- Create a booking and download its confirmation image.
+- Look up an existing booking by reference code and mobile number, and cancel eligible bookings.
+- Responsive, accessible UI styled with DSWD colors and logo.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Run locally
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Requires Node.js 20+ and the AICS booking API running locally on port 8001.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Copy `.env.example` to `.env.local` if your API runs at a different address; set `BACKEND_API_URL` to the API origin.
+2. Install dependencies with `npm install`.
+3. Start the development server with `npm run dev` and open http://localhost:3000.
+4. For production, run `npm run build`, then `npm start`.
 
-## Learn More
+The app proxies `/backend-api/*` to `${BACKEND_API_URL}/api/*`; browser requests use same-origin cookies and the API's CSRF token endpoint.
 
-To learn more about Next.js, take a look at the following resources:
+## Run with the API Compose stack
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The API repository's `docker-compose.yml` includes this app as the `booking` service. From `aics-booking-api`, run `docker compose up --build -d` to start the API, database, staff client, and public booking app together. The booking app is available at http://localhost:3003 and uses the internal API service URL automatically. `API_PORT` and `BOOKING_PORT` can be overridden in the API `.env` file when their default host ports are already in use.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Run this app in its own container
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Start the API separately so it is reachable on host port 8011, then run `docker compose up --build -d` from this directory. The standalone app is published at http://localhost:3004 by default. It connects through `host.docker.internal`; set `BACKEND_API_URL` in `.env` to another API origin if needed, or change `BOOKING_PORT` to use a different local port.

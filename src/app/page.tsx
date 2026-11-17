@@ -1,69 +1,209 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Scanner } from '@yudiel/react-qr-scanner';
+import { AlertCircle, ArrowLeft, Building2, CalendarDays, CheckCircle2, ChevronRight, Clock3, Download, LoaderCircle, Mail, Phone, ScanQrCode, Search, ShieldCheck, X } from 'lucide-react';
+import DswdLogo from '@/components/DswdLogo';
+import { BookingApiError, cancelBooking, createBooking, getAssistanceTypes, getAvailability, getBookingOffices, getBookingRules, lookupBooking, type AssistanceType, type Availability, type BookingOffice, type BookingRules, type PublicAppointment } from '@/lib/bookingApi';
+
+type Language = 'en' | 'fil' | 'ceb' | 'hil';
+type Step = 'office' | 'privacy' | 'request' | 'requirements' | 'details';
+const STEPS: { id: Step; label: string }[] = [{ id: 'office', label: 'Office' }, { id: 'privacy', label: 'Privacy' }, { id: 'request', label: 'Appointment' }, { id: 'requirements', label: 'Requirements' }, { id: 'details', label: 'Applicant' }];
+const PRIVACY: Record<Language, { subtitle: string; paragraphs: string[]; accept: string; proceed: string }> = {
+  en: { subtitle: 'Personal Information Collection and Use', paragraphs: ['DSWD is committed to safeguarding your personal and sensitive personal information. Your data may be collected through forms, intake sheets, visitor logs, and other official channels, as authorized or required by law.', 'Your information is processed for the delivery of social welfare and development services and the implementation of DSWD programs. Disclosure is made only with your consent or when authorized or required by law.', 'Appropriate security measures protect your data in accordance with the Data Privacy Act of 2012 and relevant National Privacy Commission issuances.', 'For privacy concerns, contact the Data Protection Officer at dpo@dswd.gov.ph.'], accept: 'I have read and understood this Data Privacy Notice.', proceed: 'I acknowledge and proceed' },
+  fil: { subtitle: 'Pagkolekta at Paggamit ng Personal na Impormasyon', paragraphs: ['Nakatuon ang DSWD sa pangangalaga ng inyong personal at sensitibong personal na impormasyon. Maaaring kolektahin ang datos sa pamamagitan ng mga form at iba pang opisyal na paraan, alinsunod sa batas.', 'Pinoproseso ang impormasyon para sa paghahatid ng mga serbisyong panlipunan at pagpapatupad ng mga programa ng DSWD. Ibabahagi lamang ito nang may pahintulot o kung pinahihintulutan ng batas.', 'Pinoprotektahan ang inyong datos alinsunod sa Data Privacy Act of 2012 at mga kaugnay na patakaran ng National Privacy Commission.', 'Para sa mga alalahanin sa privacy, makipag-ugnayan sa Data Protection Officer sa dpo@dswd.gov.ph.'], accept: 'Nabasa at naunawaan ko ang Data Privacy Notice na ito.', proceed: 'Kinikilala ko at magpapatuloy' },
+  ceb: { subtitle: 'Pagkolekta ug Paggamit sa Personal nga Impormasyon', paragraphs: ['Ang DSWD komitado sa pagpanalipod sa inyong personal ug sensitibong personal nga impormasyon. Mahimong kolektahon ang datos pinaagi sa mga form ug uban pang opisyal nga pamaagi sumala sa balaod.', 'Ipahigayon ang pagproseso alang sa paghatag sa mga serbisyo sa social welfare ug pagpatuman sa mga programa sa DSWD. Ipaambit lamang kini kon gitugotan o gikinahanglan sa balaod.', 'Gipanalipdan ang inyong datos subay sa Data Privacy Act of 2012 ug may kalabotan nga mga lagda sa National Privacy Commission.', 'Alang sa mga kabalaka sa privacy, kontaka ang Data Protection Officer sa dpo@dswd.gov.ph.'], accept: 'Nabasa ug nasabtan nako kini nga Data Privacy Notice.', proceed: 'Akong gikumpirma ug mopadayon' },
+  hil: { subtitle: 'Pagkolekta kag Paggamit sang Personal nga Impormasyon', paragraphs: ['Ang DSWD komitado sa pag-amlig sang inyo personal kag sensitibo nga impormasyon. Mahimo kolektahon ang datos paagi sa mga form kag iban nga opisyal nga pamaagi suno sa kasuguan.', 'Ginaproseso ang impormasyon para sa paghatag sang mga serbisyo sosyal kag pagpatuman sang mga programa sang DSWD. Ginapaambit lamang ini kon ginatugutan ukon ginapatuman sang kasuguan.', 'Ginaprotektahan ang inyo datos suno sa Data Privacy Act of 2012 kag may kaangtanan nga mga patakaran sang National Privacy Commission.', 'Para sa mga kabalaka sa privacy, kontaka ang Data Protection Officer sa dpo@dswd.gov.ph.'], accept: 'Nabasa kag naintiendihan ko ini nga Data Privacy Notice.', proceed: 'Ginakilala ko kag magapadayon' }
+};
+const input = 'mt-2 h-12 w-full rounded-xl border border-[#2e3192]/20 bg-white px-3.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#2e3192] focus:ring-4 focus:ring-[#2e3192]/10 disabled:bg-slate-100';
+const label = 'block text-sm font-semibold text-slate-700';
+const blankForm = { officeSlug: '', typeOfAssistance: '', firstName: '', middleName: '', lastName: '', birthdate: '', cellNumber: '', email: '', appointmentDate: '', timeSlot: '' };
+const dateString = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const dateLabel = (v: string) => { const d = new Date(`${v}T12:00:00`); return Number.isNaN(d.getTime()) ? v : new Intl.DateTimeFormat('en-PH', { dateStyle: 'full', timeZone: 'Asia/Manila' }).format(d); };
+function parseIdName(raw: string) {
+  const found: Record<string, string> = {};
+  try {
+    const walk = (item: unknown) => {
+      if (!item || typeof item !== 'object') return;
+      if (Array.isArray(item)) return item.forEach(walk);
+      Object.entries(item as Record<string, unknown>).forEach(([key, value]) => {
+        if (typeof value !== 'string') return walk(value);
+        const k = key.toLowerCase().replace(/[^a-z]/g, '');
+        if (['lastname', 'surname', 'familyname', 'lname'].includes(k)) found.last = value.trim();
+        if (['firstname', 'givenname', 'fname'].includes(k)) found.first = value.trim();
+        if (['middlename', 'middleinitial', 'mname'].includes(k)) found.middle = value.trim();
+      });
+    };
+    walk(JSON.parse(raw));
+  } catch {
+    const match = raw.match(/(?:last\s*name|surname)\s*[:=]\s*([^|;\n]+)[|;\n].*?(?:first\s*name|given\s*name)\s*[:=]\s*([^|;\n]+)/i);
+    if (match) return { firstName: match[2].trim(), middleName: raw.match(/(?:middle\s*name|middle\s*initial)\s*[:=]\s*([^|;\n]+)/i)?.[1].trim() ?? '', lastName: match[1].trim() };
+  }
+  return found.first && found.last ? { firstName: found.first, middleName: found.middle ?? '', lastName: found.last } : null;
 }
+
+export default function BookingPage() {
+  const [language, setLanguage] = useState<Language>(() => {
+    if (typeof window === 'undefined') return 'en';
+    const saved = sessionStorage.getItem('aicsPrivacyLanguage') as Language | null;
+    return saved && saved in PRIVACY ? saved : 'en';
+  });
+  const [step, setStep] = useState<Step>('office');
+  const [furthest, setFurthest] = useState(0);
+  const [accepted, setAccepted] = useState(false);
+  const [offices, setOffices] = useState<BookingOffice[]>([]);
+  const [types, setTypes] = useState<AssistanceType[]>([]);
+  const [rules, setRules] = useState<BookingRules | null>(null);
+  const [availability, setAvailability] = useState<Availability | null>(null);
+  const [loadingOffices, setLoadingOffices] = useState(true);
+  const [loadingRules, setLoadingRules] = useState(true);
+  const [checking, setChecking] = useState(false);
+  const [officeError, setOfficeError] = useState('');
+  const [typeError, setTypeError] = useState('');
+  const [form, setForm] = useState(blankForm);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState<PublicAppointment | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [lookupCode, setLookupCode] = useState('');
+  const [lookupCell, setLookupCell] = useState('');
+  const [found, setFound] = useState<PublicAppointment | null>(null);
+  const [lookupError, setLookupError] = useState('');
+  const [lookupMessage, setLookupMessage] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
+  const [looking, setLooking] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const availabilityRequest = useRef(0);
+  const privacy = PRIVACY[language];
+  const currentIndex = STEPS.findIndex((s) => s.id === step);
+  const office = offices.find((o) => o.slug === form.officeSlug);
+  const assistance = types.find((t) => t.name === form.typeOfAssistance);
+  const holidays = useMemo(() => new Map((rules?.holidays ?? []).map((h) => [h.date, h.name])), [rules]);
+  const dateError = useMemo(() => {
+    if (!form.appointmentDate || !rules) return '';
+    if (form.appointmentDate < rules.minDate) return 'Past dates cannot be booked.';
+    if (form.appointmentDate > rules.maxDate) return 'This date is outside the configured booking calendar.';
+    const day = new Date(`${form.appointmentDate}T00:00:00`).getDay();
+    if (day === 0 || day === 6) return 'Appointments are not available on weekends.';
+    return holidays.has(form.appointmentDate) ? `Appointments are not available on ${holidays.get(form.appointmentDate)}.` : '';
+  }, [form.appointmentDate, holidays, rules]);
+
+  useEffect(() => {
+    getBookingOffices().then(setOffices).catch((e: unknown) => setOfficeError(e instanceof Error ? e.message : 'Offices could not be loaded.')).finally(() => setLoadingOffices(false));
+    getAssistanceTypes().then(setTypes).catch((e: unknown) => setTypeError(e instanceof Error ? e.message : 'Assistance types could not be loaded.'));
+    getBookingRules().then(setRules).catch((e: unknown) => setError(e instanceof Error ? e.message : 'The booking calendar could not be loaded.')).finally(() => setLoadingRules(false));
+  }, []);
+
+  function update<K extends keyof typeof form>(key: K, value: string) {
+    if (key === 'officeSlug' || key === 'appointmentDate') {
+      setAvailability(null);
+      setChecking(false);
+      const nextForm = { ...form, [key]: value, timeSlot: '' };
+      setForm(nextForm);
+      const nextDate = nextForm.appointmentDate;
+      let nextDateError = '';
+      if (nextDate && rules) {
+        if (nextDate < rules.minDate) nextDateError = 'Past dates cannot be booked.';
+        else if (nextDate > rules.maxDate) nextDateError = 'This date is outside the configured booking calendar.';
+        else {
+          const day = new Date(`${nextDate}T00:00:00`).getDay();
+          if (day === 0 || day === 6) nextDateError = 'Appointments are not available on weekends.';
+          else if (holidays.has(nextDate)) nextDateError = `Appointments are not available on ${holidays.get(nextDate)}.`;
+        }
+      }
+      const id = ++availabilityRequest.current;
+      if (nextForm.appointmentDate && nextForm.officeSlug && rules && !nextDateError) {
+        setChecking(true);
+        getAvailability(nextForm.appointmentDate, nextForm.officeSlug).then((result) => {
+          if (id === availabilityRequest.current) setAvailability(result);
+        }).catch((e: unknown) => {
+          if (id === availabilityRequest.current) setError(e instanceof Error ? e.message : 'Availability could not be checked.');
+        }).finally(() => {
+          if (id === availabilityRequest.current) setChecking(false);
+        });
+      }
+    } else setForm((v) => ({ ...v, [key]: value }));
+    setError('');
+  }
+  function goTo(next: Step) { const i = STEPS.findIndex((s) => s.id === next); if (i < 0 || i > furthest || i > currentIndex) return; if (next === 'office') setAccepted(false); setError(''); setStep(next); }
+  function toPrivacy() { if (!form.officeSlug) { setError('Choose an office to continue.'); return; } setError(''); setStep('privacy'); setFurthest((n) => Math.max(n, 1)); }
+  function acceptPrivacy() { if (!accepted) return; sessionStorage.setItem('aicsPrivacyLanguage', language); setStep('request'); setFurthest((n) => Math.max(n, 2)); }
+  function toRequirements() {
+    if (!form.officeSlug || !form.typeOfAssistance || !form.appointmentDate || !form.timeSlot || dateError || !availability?.availableSlots.includes(form.timeSlot)) { setError(dateError || 'Choose an office, assistance type, available date, and available time period.'); return; }
+    setError(''); setStep('requirements'); setFurthest((n) => Math.max(n, 3));
+  }
+  function toApplicant() { setStep('details'); setFurthest((n) => Math.max(n, 4)); }
+
+  async function submitBooking(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setError('');
+    if (!form.officeSlug || !form.typeOfAssistance || !form.firstName.trim() || !form.lastName.trim() || !form.birthdate || form.birthdate > dateString() || !/^09\d{9}$/.test(form.cellNumber.trim()) || (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) || !form.appointmentDate || !form.timeSlot || dateError || !availability?.availableSlots.includes(form.timeSlot)) { setError(dateError || 'Complete all required fields and choose an available time slot.'); return; }
+    setSubmitting(true);
+    try {
+      const created = await createBooking({ ...form, firstName: form.firstName.trim(), middleName: form.middleName.trim(), lastName: form.lastName.trim(), cellNumber: form.cellNumber.trim(), email: form.email.trim().toLowerCase() });
+      setSuccess(created); setForm(blankForm); setAvailability(null); setAccepted(false); setStep('office'); setFurthest(0);
+    } catch (e) {
+      setError(e instanceof BookingApiError ? e.message : 'The booking could not be completed. Please try again.');
+      if (e instanceof BookingApiError && (e.message.includes('filled') || e.message.includes('available'))) getAvailability(form.appointmentDate, form.officeSlug).then(setAvailability).catch(() => undefined);
+    } finally { setSubmitting(false); }
+  }
+  async function submitLookup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setLookupError(''); setLookupMessage(''); setFound(null);
+    if (!/^AICS-[A-Z]{3}-\d{4}-[A-Z0-9]{5}$/i.test(lookupCode.trim()) || !/^09\d{9}$/.test(lookupCell.trim())) { setLookupError('Enter a valid reference code and the 11-digit mobile number used for booking.'); return; }
+    setLooking(true);
+    try { setFound((await lookupBooking({ appointmentCode: lookupCode.trim().toUpperCase(), cellNumber: lookupCell.trim() })).appointment); }
+    catch (e) { setLookupError(e instanceof Error ? e.message : 'The appointment could not be checked.'); }
+    finally { setLooking(false); }
+  }
+  async function cancelAppointment() {
+    if (!found?.canCancel || !window.confirm(`Cancel appointment ${found.appointmentCode}?`)) return;
+    setCancelling(true); setLookupError(''); setLookupMessage('');
+    try {
+      const result = await cancelBooking({ appointmentCode: found.appointmentCode, cellNumber: lookupCell.trim(), cancellationReason: cancelReason.trim() });
+      setFound(result.appointment); setLookupMessage('Appointment cancelled. The released slot is now available for booking.');
+      if (form.appointmentDate === result.appointment.appointmentDate && form.officeSlug === result.appointment.officeSlug) getAvailability(form.appointmentDate, form.officeSlug).then(setAvailability).catch(() => undefined);
+    } catch (e) { setLookupError(e instanceof Error ? e.message : 'The appointment could not be cancelled.'); }
+    finally { setCancelling(false); }
+  }
+  function downloadConfirmation(appointment: PublicAppointment) {
+    const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 900;
+    const ctx = canvas.getContext('2d'); if (!ctx) { setError('Confirmation image could not be created in this browser.'); return; }
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 1200, 900); ctx.fillStyle = '#2e3192'; ctx.fillRect(0, 0, 1200, 190); ctx.fillStyle = '#fef200'; ctx.fillRect(0, 182, 1200, 8);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = 'bold 42px Arial'; ctx.fillText('DSWD AICS APPOINTMENT CONFIRMATION', 600, 78); ctx.fillStyle = '#fff9b8'; ctx.font = '24px Arial'; ctx.fillText('Official Web Booking Confirmation', 600, 132);
+    ctx.fillStyle = '#f6f7ff'; ctx.fillRect(70, 235, 1060, 145); ctx.strokeStyle = '#2e3192'; ctx.lineWidth = 2; ctx.strokeRect(70, 235, 1060, 145); ctx.fillStyle = '#2e3192'; ctx.font = 'bold 20px Arial'; ctx.fillText('APPOINTMENT REFERENCE CODE', 600, 278); ctx.font = 'bold 42px monospace'; ctx.fillText(appointment.appointmentCode, 600, 338);
+    [['Applicant', appointment.fullName], ['Office', appointment.officeName], ['Assistance', appointment.assistanceType], ['Scheduled date', dateLabel(appointment.appointmentDate)], ['Time window', appointment.timeSlot], ['Status', appointment.status]].forEach(([title, value], i) => { const y = 455 + i * 64; ctx.textAlign = 'left'; ctx.fillStyle = '#64748b'; ctx.font = '24px Arial'; ctx.fillText(title, 100, y); ctx.textAlign = 'right'; ctx.fillStyle = '#1e293b'; ctx.font = 'bold 24px Arial'; ctx.fillText(value, 1100, y, 700); ctx.strokeStyle = '#e2e8f0'; ctx.beginPath(); ctx.moveTo(100, y + 22); ctx.lineTo(1100, y + 22); ctx.stroke(); });
+    ctx.textAlign = 'center'; ctx.fillStyle = '#2e3192'; ctx.font = 'bold 20px Arial'; ctx.fillText('Please keep this confirmation for your records.', 600, 830);
+    const a = document.createElement('a'); a.href = canvas.toDataURL('image/png'); a.download = `DSWD-Appointment-${appointment.appointmentCode}.png`; a.click();
+  }
+  function scan(raw: string) {
+    const result = parseIdName(raw); if (!result) { setError('QR scanned, but the first and last names could not be extracted. Enter the name manually.'); return; }
+    setForm((v) => ({ ...v, ...result })); setError(''); setScanOpen(false);
+  }
+
+  return <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(254,242,0,.18),_transparent_30%),linear-gradient(180deg,#f6f7ff_0%,#fff_55%,#f6f7ff_100%)] px-4 py-6 text-slate-800 sm:px-7 sm:py-10">
+    <header className="mx-auto mb-6 flex max-w-5xl items-center justify-between gap-4"><div className="flex items-center gap-3"><DswdLogo /><div><p className="text-sm font-extrabold">DSWD <span className="font-medium text-slate-500">| AICS Services</span></p><p className="mt-0.5 text-[10px] font-bold uppercase tracking-[.15em] text-[#2e3192]/70">Public appointment booking</p></div></div><span className="hidden items-center gap-2 rounded-full border border-[#2e3192]/10 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-600 sm:inline-flex"><ShieldCheck size={15} className="text-[#2e3192]" />No account required</span></header>
+    {!success && <nav aria-label="Appointment booking steps" className="mx-auto mb-5 max-w-5xl rounded-2xl border border-[#2e3192]/10 bg-white/85 p-3 shadow-sm sm:p-4"><ol className="flex items-center justify-between gap-1 overflow-x-auto">{STEPS.map((item, i) => { const active = i === currentIndex; const complete = i < currentIndex; return <li key={item.id} className="flex min-w-0 flex-1 items-center"><button type="button" onClick={() => complete && goTo(item.id)} disabled={!complete} aria-current={active ? 'step' : undefined} aria-label={`${item.label}${active ? ', current step' : complete ? ', completed' : ''}`} className={`flex min-w-0 items-center gap-2 rounded-xl px-2 py-2 text-left text-xs font-bold sm:px-3 ${active ? 'bg-[#2e3192] text-white' : complete ? 'text-[#2e3192] hover:bg-[#2e3192]/[.06]' : 'cursor-default text-slate-400'}`}><span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] ${active ? 'bg-white/15 text-[#fef200]' : complete ? 'bg-[#2e3192]/[.08] text-[#2e3192]' : 'bg-slate-100 text-slate-400'}`}>{i + 1}</span><span className="hidden truncate sm:inline">{item.label}</span></button>{i < STEPS.length - 1 && <ChevronRight size={14} className="mx-1 shrink-0 text-slate-300" />}</li>; })}</ol></nav>}
+    {!success && currentIndex > 0 && <div className="mx-auto mb-4 max-w-5xl"><button type="button" onClick={() => goTo(STEPS[currentIndex - 1].id)} className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-[#2e3192] hover:bg-white/80"><ArrowLeft size={16} />Back to {STEPS[currentIndex - 1].label}</button></div>}
+    {error && (step === 'office' || step === 'privacy') && <Alert message={error} />}
+
+    {success ? <section className="mx-auto max-w-2xl overflow-hidden rounded-[26px] border border-[#2e3192]/15 bg-white shadow-[0_24px_70px_rgba(46,49,146,0.12)]"><div className="border-b-4 border-[#fef200] bg-[#2e3192] p-6 text-center text-white sm:p-8"><span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-white/10 text-[#fef200]"><CheckCircle2 size={30} /></span><p className="mt-4 text-[10px] font-extrabold uppercase tracking-[.18em] text-[#fef200]">Booking confirmation</p><h1 className="mt-2 text-2xl font-extrabold sm:text-3xl">Appointment request received</h1><p className="mt-2 text-sm text-white/75">Keep this reference code for your records.</p></div><div className="space-y-5 p-5 sm:p-8"><div className="rounded-2xl border border-[#2e3192]/15 bg-[#f6f7ff] px-4 py-5 text-center"><p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#2e3192]">Appointment reference code</p><p className="mt-2 break-all font-mono text-2xl font-black tracking-wider text-[#2e3192]">{success.appointmentCode}</p></div><dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-3 rounded-2xl border border-slate-200 p-4 text-sm"><dt className="text-slate-500">Applicant</dt><dd className="text-right font-semibold">{success.fullName}</dd><dt className="text-slate-500">Office</dt><dd className="text-right font-semibold">{success.officeName}</dd><dt className="text-slate-500">Assistance</dt><dd className="text-right font-semibold">{success.assistanceType}</dd><dt className="text-slate-500">Birthdate</dt><dd className="text-right font-semibold">{success.birthdate}</dd><dt className="text-slate-500">Date</dt><dd className="text-right font-semibold">{dateLabel(success.appointmentDate)}</dd><dt className="text-slate-500">Period</dt><dd className="text-right font-semibold">{success.timeSlot}</dd><dt className="text-slate-500">Status</dt><dd className="text-right"><Status status={success.status} /></dd></dl><p className="rounded-xl bg-[#fff9b8]/55 p-3 text-center text-xs text-[#2e3192]">Present a copy of your confirmation code when you arrive for your appointment.</p><div className="grid gap-3 sm:grid-cols-2"><button onClick={() => downloadConfirmation(success)} className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#2e3192] px-4 text-sm font-bold text-white hover:bg-[#23256f]"><Download size={16} />Download confirmation</button><button onClick={() => setSuccess(null)} className="h-12 rounded-xl border border-[#2e3192]/20 px-4 text-sm font-bold text-[#2e3192] hover:bg-[#f6f7ff]">Start another booking</button></div></div></section>
+    : step === 'office' ? <section className="mx-auto max-w-5xl overflow-hidden rounded-[26px] border border-[#2e3192]/15 bg-white shadow-[0_24px_70px_rgba(46,49,146,0.12)]"><StepHeader eyebrow="Appointment booking · Step 1" title="Choose an office" subtitle="Select the DSWD office where you would like to apply for assistance." /><div className="p-5 sm:p-8">{officeError && <Alert message={officeError} />}{loadingOffices ? <Loading>Loading offices…</Loading> : offices.length === 0 ? <Empty icon={<Building2 size={26} />} title="No offices found" message="Please try again later or contact your DSWD Field Office." /> : <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">{offices.map((o) => { const selected = form.officeSlug === o.slug; return <button key={o.slug} type="button" aria-pressed={selected} onClick={() => update('officeSlug', o.slug)} className={`rounded-2xl border p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md ${selected ? 'border-[#2e3192] bg-[#f6f7ff] ring-2 ring-[#2e3192]/15' : 'border-[#2e3192]/15 hover:border-[#2e3192]/50'}`}><span className="flex items-start justify-between gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-[#fff9b8] text-[#2e3192]"><Building2 size={20} /></span><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${selected ? 'bg-[#2e3192] text-white' : 'bg-[#2e3192]/[.06] text-[#2e3192]'}`}>{selected ? 'Selected' : o.officeType}</span></span><span className="mt-4 block text-base font-extrabold">{o.name}</span><span className="mt-1 block text-xs text-slate-500">{[o.city, o.province].filter(Boolean).join(', ') || o.officeType}</span><span className="mt-3 block text-sm leading-6 text-slate-600">{o.address || 'Address details available from the selected office.'}</span><span className="mt-4 block text-[11px] font-semibold text-slate-500">Daily capacity: {o.dailyCapacity} · AM: {o.amCapacity} · PM: {o.pmCapacity}</span></button>; })}</div>}{office && <div className="mt-5 rounded-xl border border-[#2e3192]/15 bg-[#f6f7ff]/70 p-4 text-sm"><b className="text-[#2e3192]">Selected office:</b> {office.name}<span className="mt-1 block text-xs text-slate-500">{office.address}</span></div>}<button onClick={toPrivacy} disabled={loadingOffices || !offices.length} className="mt-6 h-12 w-full rounded-xl bg-[#2e3192] text-sm font-bold text-white hover:bg-[#23256f] disabled:bg-slate-300">Continue to privacy notice</button></div></section>
+    : step === 'privacy' ? <section className="mx-auto max-w-2xl overflow-hidden rounded-[26px] border border-[#2e3192]/15 bg-white shadow-[0_24px_70px_rgba(46,49,146,0.12)]"><StepHeader eyebrow="Data privacy notice" title="DSWD AICS Appointment Booking" subtitle={privacy.subtitle} /><div className="space-y-5 p-5 sm:p-8"><div className="flex items-center justify-between rounded-xl border border-[#2e3192]/10 bg-[#f6f7ff]/70 p-3.5 text-xs"><span className="font-semibold">Selected office: {office?.name}</span><button onClick={() => { setAccepted(false); setStep('office'); }} className="font-bold text-[#2e3192] underline">Change office</button></div><fieldset><legend className="text-sm font-bold text-[#2e3192]">Choose your language</legend><div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{([['en', 'English'], ['fil', 'Filipino'], ['ceb', 'Bisaya'], ['hil', 'Ilonggo']] as const).map(([key, title]) => <button key={key} type="button" aria-pressed={language === key} onClick={() => { setLanguage(key); setAccepted(false); }} className={`rounded-xl border px-3 py-2.5 text-sm font-bold ${language === key ? 'border-[#2e3192] bg-[#2e3192] text-white' : 'border-slate-200 text-slate-600 hover:border-[#2e3192]/40'}`}>{title}</button>)}</div></fieldset><div className="space-y-3 rounded-2xl border border-[#2e3192]/10 bg-[#f6f7ff]/70 p-4 text-sm leading-6 text-slate-600">{privacy.paragraphs.map((p) => <p key={p}>{p}</p>)}</div><label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#2e3192]/15 p-4 text-sm leading-6 text-slate-600"><input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} className="mt-1 h-4 w-4 accent-[#2e3192]" />{privacy.accept}</label><button disabled={!accepted} onClick={acceptPrivacy} className="w-full rounded-xl bg-[#2e3192] px-4 py-3.5 text-sm font-bold text-white hover:bg-[#23256f] disabled:bg-slate-300">{privacy.proceed}</button></div></section>
+    : <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(330px,.92fr)]"><section className="overflow-hidden rounded-[26px] border border-[#2e3192]/15 bg-white shadow-[0_24px_70px_rgba(46,49,146,0.09)] lg:col-span-2"><div className="border-b-4 border-[#fef200] bg-[#2e3192] px-6 py-7 text-center text-white sm:px-9"><p className="text-[10px] font-extrabold uppercase tracking-[.2em] text-[#fef200]">Assistance appointment</p><h1 className="mt-2 text-2xl font-extrabold sm:text-3xl">Book your AICS appointment</h1><p className="mt-2 text-sm text-white/75">Hospital bill, medicine, laboratory, and burial assistance · No login required</p></div><div className={`grid gap-0 ${step === 'request' ? 'lg:grid-cols-[minmax(0,1.1fr)_minmax(260px,.9fr)]' : ''}`}><form onSubmit={submitBooking} noValidate className="space-y-5 p-5 sm:p-8">{error && <Alert message={error} />}
+      {step === 'request' ? <><div><p className="text-xs font-bold uppercase tracking-[.14em] text-[#2e3192]/65">Step 1 · Appointment request</p><p className="mt-1 text-xs text-slate-500">Fields marked with <Required /> are required.</p></div><div className="rounded-xl border border-[#2e3192]/15 bg-[#f6f7ff]/70 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-bold uppercase text-[#2e3192]">Selected office</p><p className="mt-1 text-sm font-bold">{office?.name}</p><p className="mt-1 text-xs text-slate-500">{office?.address}</p><p className="mt-1 text-[11px] text-slate-400">Capacity: {office?.dailyCapacity} per day · {office?.amCapacity} AM · {office?.pmCapacity} PM.</p></div><button type="button" onClick={() => setStep('office')} className="text-xs font-bold text-[#2e3192] underline">Change</button></div></div><Field label="Type of assistance requested" required><select required value={form.typeOfAssistance} onChange={(e) => update('typeOfAssistance', e.target.value)} disabled={!types.length} className={input}><option value="">{types.length ? 'Select assistance type…' : 'Loading assistance types…'}</option>{types.map((t) => <option key={t.code} value={t.name}>{t.name}</option>)}</select>{typeError && <small className="text-red-700">{typeError}</small>}</Field><Field label="Preferred date" required><div className="relative"><CalendarDays size={16} className="absolute left-3.5 top-[26px] text-[#2e3192]" /><input type="date" required min={rules?.minDate} max={rules?.maxDate} value={form.appointmentDate} onChange={(e) => update('appointmentDate', e.target.value)} disabled={!rules || loadingRules} className={`${input} pl-10`} /></div>{dateError ? <small role="alert" className="text-red-700">{dateError}</small> : <small className="text-slate-400">Weekends and Philippine regular holidays are unavailable.</small>}</Field><Field label="Preferred time slot" required><div className="relative"><Clock3 size={16} className="absolute left-3.5 top-[26px] text-[#2e3192]" /><select required value={form.timeSlot} disabled={!availability || checking || !availability.availableSlots.length} onChange={(e) => update('timeSlot', e.target.value)} className={`${input} pl-10`}><option value="">{checking ? 'Checking availability…' : !form.appointmentDate ? 'Choose a date first' : availability?.isFullyBooked ? 'Fully booked' : 'Select a time…'}</option>{availability?.availableSlots.map((s) => <option key={s} value={s}>{s}</option>)}</select></div>{availability?.isFullyBooked && <small className="text-red-700">No slots remain for this day. Please choose another date.</small>}</Field><button type="button" onClick={toRequirements} className="h-12 w-full rounded-xl bg-[#2e3192] text-sm font-bold text-white hover:bg-[#23256f]">Continue to requirements</button></>
+      : step === 'requirements' ? <><div><p className="text-xs font-bold uppercase tracking-[.14em] text-[#2e3192]/65">Step 2 · {form.typeOfAssistance} requirements</p><p className="mt-1 text-xs text-slate-500">Review the requirements for this assistance type.</p></div><div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950"><b>Requirements are subject to DSWD review and may vary by Field Office.</b><p>Please confirm the current requirements with the office handling your application.</p></div><ul className="space-y-3 rounded-2xl border border-[#2e3192]/10 p-4 text-sm">{(assistance?.requirements ?? []).map((r) => <li key={r} className="flex gap-2.5"><CheckCircle2 size={17} className="shrink-0 text-[#2e3192]" />{r}</li>)}</ul><div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => setStep('request')} className="h-12 rounded-xl border border-[#2e3192]/20 px-4 text-sm font-bold text-[#2e3192]">Back to appointment details</button><button type="button" onClick={toApplicant} className="h-12 rounded-xl bg-[#2e3192] px-4 text-sm font-bold text-white">Continue to applicant information</button></div></>
+      : <><div><p className="text-xs font-bold uppercase tracking-[.14em] text-[#2e3192]/65">Step 3 · Applicant information</p><p className="mt-1 text-xs text-slate-500">Fields marked with <Required /> are required.</p></div><div className="flex items-center justify-between rounded-xl border border-[#2e3192]/10 bg-[#f6f7ff]/70 p-3.5 text-xs"><span className="font-semibold">{office?.name} · {form.typeOfAssistance} · {form.appointmentDate ? dateLabel(form.appointmentDate) : ''} · {form.timeSlot}</span><button type="button" onClick={() => setStep('request')} className="font-bold text-[#2e3192] underline">Edit</button></div><div className="grid gap-4 sm:grid-cols-2"><Field label="First name" required><input required maxLength={80} value={form.firstName} onChange={(e) => update('firstName', e.target.value)} autoComplete="given-name" placeholder="First name" className={input} /></Field><Field label="Middle name" hint="Optional"><input maxLength={80} value={form.middleName} onChange={(e) => update('middleName', e.target.value)} autoComplete="additional-name" placeholder="Middle name" className={input} /></Field><Field label="Last name" required><div className="flex gap-2"><input required maxLength={80} value={form.lastName} onChange={(e) => update('lastName', e.target.value)} autoComplete="family-name" placeholder="Last name" className={input} /><button type="button" onClick={() => setScanOpen(true)} aria-label="Scan National ID QR" title="Scan National ID QR" className="mt-2 grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-[#2e3192]/20 bg-[#fff9b8]/60 text-[#2e3192]"><ScanQrCode size={20} /></button></div></Field><Field label="Birthdate" required><input type="date" required max={dateString()} value={form.birthdate} onChange={(e) => update('birthdate', e.target.value)} autoComplete="bday" className={input} /></Field></div><p className="-mt-2 text-[11px] text-slate-400">Enter your name as it appears on your ID.</p><Field label="Cell number" required><div className="relative"><Phone size={16} className="absolute left-3.5 top-[26px] text-slate-400" /><input type="tel" required inputMode="numeric" pattern="09[0-9]{9}" maxLength={11} value={form.cellNumber} onChange={(e) => update('cellNumber', e.target.value.replace(/\D/g, '').slice(0, 11))} autoComplete="tel" placeholder="09123456789" className={`${input} pl-10`} /></div><small className="text-slate-400">Enter an 11-digit mobile number starting with 09.</small></Field><Field label="Email address" hint="Optional"><div className="relative"><Mail size={16} className="absolute left-3.5 top-[26px] text-slate-400" /><input type="email" maxLength={254} value={form.email} onChange={(e) => update('email', e.target.value)} autoComplete="email" placeholder="juan@email.com" className={`${input} pl-10`} /></div></Field><button type="submit" disabled={submitting || checking || !availability?.availableSlots.length || !form.timeSlot || !rules?.available} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#2e3192] px-4 text-sm font-bold text-white disabled:bg-slate-300">{submitting ? <><LoaderCircle size={17} className="animate-spin" />Processing appointment…</> : 'Book appointment'}</button><p className="text-center text-[11px] text-slate-400">Your information is used to process and manage your assistance appointment request.</p></>}
+      </form>
+      {step === 'request' && <aside className="border-t border-[#2e3192]/10 bg-[#f6f7ff]/65 p-5 sm:p-7 lg:border-l lg:border-t-0"><div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#fff9b8] text-[#2e3192]"><CalendarDays size={19} /></span><div><h2 className="text-sm font-extrabold">Daily availability</h2><p className="mt-1 text-xs text-slate-500">Choose a date to view open times.</p></div></div>{loadingRules ? <div className="mt-6 text-xs text-slate-500"><LoaderCircle size={15} className="mr-2 inline animate-spin" />Loading the Philippine booking calendar…</div> : !rules?.available ? <p className="mt-6 rounded-xl bg-[#fff9b8]/50 p-4 text-xs">The booking calendar is not currently accepting appointments. Please check back later.</p> : <><div className="mt-6 rounded-2xl border border-[#2e3192]/15 bg-white p-4"><div className="flex items-end justify-between"><div><p className="text-[10px] font-bold text-[#2e3192]">{office?.name ?? 'Selected office'}</p><p className="mt-1 text-sm font-semibold">{form.appointmentDate ? dateLabel(form.appointmentDate) : 'Select an appointment date'}</p></div><div className="text-right"><span className="text-3xl font-black text-[#2e3192]">{availability?.remainingSlots ?? '—'}</span><span className="block text-[10px] text-slate-400">of {availability?.dailyCapacity ?? office?.dailyCapacity ?? 60} slots</span></div></div><div className="mt-4 h-2 overflow-hidden rounded-full bg-[#fff9b8]"><div className="h-full bg-[#2e3192]" style={{ width: `${availability ? Math.max(0, availability.remainingSlots / availability.dailyCapacity * 100) : 0}%` }} /></div></div><div className="mt-4 space-y-2">{rules.timeSlots.map((slot) => { const available = availability?.availableSlots.includes(slot); const capacity = availability?.periodCapacities[slot] ?? (slot === 'AM' ? office?.amCapacity : office?.pmCapacity) ?? 30; return <div key={slot} className={`flex items-center justify-between rounded-xl border px-3.5 py-3 text-xs ${available ? 'border-[#2e3192]/15 bg-white text-slate-700' : 'border-slate-200/80 bg-white/60 text-slate-400'}`}><span className="flex items-center gap-2"><Clock3 size={14} className={available ? 'text-[#2e3192]' : 'text-slate-300'} />{slot}</span><b className={checking ? 'text-slate-400' : available ? 'text-[#2e3192]' : 'text-slate-400'}>{checking ? 'Checking' : !availability ? '—' : `${availability.periodRemaining[slot] ?? 0} / ${capacity} slots remaining`}</b></div>; })}</div><div className="mt-5 rounded-xl border border-[#2e3192]/10 bg-white p-4"><h3 className="text-xs font-bold">Appointment details</h3><ul className="mt-3 space-y-2 text-xs text-slate-500"><li>• Daily capacity is shown above.</li><li>• Appointments are divided into AM and PM periods.</li><li>• A reference code is issued after a successful booking.</li></ul></div></>}</aside>}</div></section>
+      {step === 'request' && <section className="overflow-hidden rounded-[24px] border border-[#2e3192]/15 bg-white shadow-sm lg:col-span-2"><div className="bg-[#2e3192] px-5 py-5 text-white sm:px-7"><div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-white/10 text-[#fef200]"><Search size={19} /></span><div><h2 className="text-lg font-extrabold">Manage an appointment</h2><p className="mt-1 text-xs text-white/70">Find or cancel an existing booking securely.</p></div></div></div><div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]"><form onSubmit={submitLookup} className="space-y-4"><Field label="Appointment reference code" required><input required value={lookupCode} onChange={(e) => setLookupCode(e.target.value.toUpperCase())} placeholder="AICS-HOS-2026-ABCDE" className={`${input} font-mono`} /></Field><Field label="Cell number used for booking" required><input type="tel" required pattern="09[0-9]{9}" maxLength={11} value={lookupCell} onChange={(e) => setLookupCell(e.target.value.replace(/\D/g, '').slice(0, 11))} placeholder="09123456789" className={input} /></Field><button disabled={looking} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#2e3192] text-sm font-bold text-white disabled:opacity-60">{looking ? <><LoaderCircle size={16} className="animate-spin" />Finding…</> : <><Search size={16} />Find appointment</>}</button>{lookupError && <Alert message={lookupError} />}</form><div className="min-h-36 rounded-2xl border border-dashed border-[#2e3192]/20 bg-[#f6f7ff]/60 p-4 sm:p-5">{found ? <><div className="mb-4 flex items-start justify-between"><div><p className="text-[10px] font-bold uppercase text-[#2e3192]">Appointment found</p><p className="mt-1 font-mono text-lg font-extrabold text-[#2e3192]">{found.appointmentCode}</p></div><Status status={found.status} /></div><dl className="grid grid-cols-[90px_1fr] gap-2 text-xs"><dt className="text-slate-400">Applicant</dt><dd className="text-right font-semibold">{found.fullName}</dd><dt className="text-slate-400">Office</dt><dd className="text-right font-semibold">{found.officeName || '—'}</dd><dt className="text-slate-400">Assistance</dt><dd className="text-right font-semibold">{found.assistanceType}</dd><dt className="text-slate-400">Date</dt><dd className="text-right font-semibold">{dateLabel(found.appointmentDate)}</dd><dt className="text-slate-400">Time</dt><dd className="text-right font-semibold">{found.timeSlot}</dd></dl>{found.canCancel && <div className="mt-4 border-t pt-4"><label className="text-xs font-semibold">Cancellation reason <span className="font-normal text-slate-400">(optional)</span></label><textarea rows={2} maxLength={500} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Optional note" className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs" /><button type="button" onClick={cancelAppointment} disabled={cancelling} className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#ee1c25] text-xs font-bold text-white disabled:opacity-60">{cancelling ? 'Cancelling…' : 'Cancel appointment'}</button></div>}{lookupMessage && <p role="status" className="mt-3 rounded-lg bg-emerald-50 p-2 text-xs text-emerald-800">{lookupMessage}</p>}</> : <p className="grid min-h-28 place-items-center text-center text-sm text-slate-500">Enter your appointment code and mobile number to view booking details.</p>}</div></div></section>}
+      <footer className="px-2 text-center text-[10px] leading-5 text-slate-400 lg:col-span-2">Republic of the Philippines · Department of Social Welfare and Development<br />Your personal information is handled in accordance with the Data Privacy Act of 2012.</footer></div>}
+    {scanOpen && <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/70 p-4" role="dialog" aria-modal="true" aria-labelledby="scanner-title"><section className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl"><div className="flex items-center justify-between bg-[#2e3192] p-4 text-white"><h2 id="scanner-title" className="text-sm font-bold">Scan National ID QR</h2><button type="button" onClick={() => setScanOpen(false)} aria-label="Close scanner"><X size={18} /></button></div><div className="p-4"><div className="overflow-hidden rounded-xl bg-slate-950"><Scanner onScan={(codes) => { const value = codes[0]?.rawValue; if (value) scan(value); }} onError={() => setError('Camera access is unavailable. Use a secure connection or enter the name manually.')} formats={['qr_code']} constraints={{ facingMode: 'environment' }} /></div><p className="mt-3 text-center text-xs text-slate-500">Camera access requires permission and a secure connection.</p></div></section></div>}
+  </main>;
+}
+
+function StepHeader({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle: string }) { return <div className="border-b-4 border-[#fef200] bg-[#2e3192] p-6 text-white sm:p-8"><p className="text-[10px] font-extrabold uppercase tracking-[.18em] text-[#fef200]">{eyebrow}</p><h1 className="mt-2 text-2xl font-extrabold sm:text-3xl">{title}</h1><p className="mt-2 text-sm text-white/75">{subtitle}</p></div>; }
+function Required() { return <span className="ml-1 text-[#ee1c25]" aria-label="required">*</span>; }
+function Field({ label: title, hint, required, children }: { label: string; hint?: string; required?: boolean; children: React.ReactNode }) { return <div><label className={label}>{title}{required && <Required />}</label>{children}{hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}</div>; }
+function Alert({ message }: { message: string }) { return <div role="alert" className="mb-4 flex gap-2.5 rounded-xl border border-[#ee1c25]/20 bg-[#ee1c25]/[.05] p-3.5 text-sm leading-5 text-[#b9151c]"><AlertCircle size={17} className="mt-0.5 shrink-0" /><p>{message}</p></div>; }
+function Loading({ children }: { children: React.ReactNode }) { return <div role="status" className="grid min-h-48 place-items-center rounded-2xl border border-[#2e3192]/10 bg-[#f6f7ff]/60 text-sm text-slate-500"><span><LoaderCircle size={18} className="mr-2 inline animate-spin text-[#2e3192]" />{children}</span></div>; }
+function Empty({ icon, title, message }: { icon: React.ReactNode; title: string; message: string }) { return <div role="status" className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-[#2e3192]/20 bg-[#f6f7ff]/60 text-center"><div><span className="text-[#2e3192]/60">{icon}</span><p className="mt-3 text-sm font-semibold">{title}</p><p className="mt-1 text-xs text-slate-500">{message}</p></div></div>; }
+function Status({ status }: { status: PublicAppointment['status'] }) { const classes: Record<PublicAppointment['status'], string> = { Pending: 'bg-[#fef200]/[0.35] text-slate-800', Confirmed: 'bg-[#2e3192]/[0.08] text-[#2e3192]', Arrived: 'bg-sky-100 text-sky-800', 'No-show': 'bg-[#ee1c25]/10 text-[#ee1c25]', Completed: 'bg-[#2e3192]/10 text-[#2e3192]', Cancelled: 'bg-[#ee1c25]/10 text-[#ee1c25]' }; return <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${classes[status]}`}>{status}</span>; }
